@@ -48,8 +48,8 @@ class BaseQuantizer(metaclass = ABCMeta):
             **kwargs)
         
         # step - 2, quantize all operations
-        executor.load_graph(self._graph)
-        executor.tracing_operation_meta(inputs=inputs)
+        executor.load_graph(self._graph)        # 包含executing_order, _graph_input_dictionary(输入节点)，_graph_output_dictionary(输出节点)， _runnable_graph(GraphCommandProcessor) 此时platform只有SOI和UNSPECIFIED两种
+        executor.tracing_operation_meta(inputs=inputs)      # 利用preforward_hook和posthook来设定网络中的输入输出的size
         
         for op_name, operation in self._graph.operations.items():
             if (operation.platform == TargetPlatform.UNSPECIFIED):
@@ -63,10 +63,10 @@ class BaseQuantizer(metaclass = ABCMeta):
         # quantize operation will modify network structure
         # it is necessary calling self._executor before further execution
         # step - 3, calling graph optimization pipeline
-        executor.load_graph(self._graph)
-        quant_pipeline = self.build_quant_pipeline(setting)
+        executor.load_graph(self._graph)        # RunnableGraph 将每个op转换到对应的device中进行存储， 因为修改了其中的拓扑排序，要重新load_graph,计算
+        quant_pipeline = self.build_quant_pipeline(setting)     # 根据setting构建一个pipeline list
 
-        quant_pipeline.optimize(
+        quant_pipeline.optimize(                # 使用pipeline list中的各个optimization pass依次调用实现的抽象方法optimize进行优化
             graph=self._graph,
             dataloader=calib_dataloader,
             executor=executor,
@@ -89,14 +89,14 @@ class BaseQuantizer(metaclass = ABCMeta):
         if platform is not None: converting_operation.platform = platform
         else: platform = converting_operation.platform
 
-        if platform in {TargetPlatform.FP32, TargetPlatform.SOI}: 
+        if platform in {TargetPlatform.FP32, TargetPlatform.SOI}:   # 如果是FP32或者SOI的算子不进行量化
             return self._graph.operations[op_name]
 
         # if platform == TargetPlatform.UNSPECIFIED we can skip its quantization when type is not supported.
         if platform == TargetPlatform.UNSPECIFIED and converting_operation.type not in self.quant_operation_types:
             return self._graph.operations[op_name]
 
-        # create quantize config and convert operation.
+        # create quantize config and convert operation.     # 实际开始处理量化操作
         self._processor(QuantizeOperationCommand(
             op_name=op_name, target_platform=platform,
             config=self.init_quantize_config(operation=converting_operation)
@@ -171,7 +171,7 @@ class BaseQuantizer(metaclass = ABCMeta):
         socket = op.socket
         input_cfgs, output_cfgs = [], []
         for index in range(op.num_of_input):
-            state = QuantizationStates.INITIAL
+            state = QuantizationStates.INITIAL              # 量化参数刚刚被初始化，当前 config 不生效，数据不能被使用
             # for those unexpected inputs and outputs
             # ppq just initilize them as normal variable.
             if index < len(socket.in_plat):
@@ -382,7 +382,7 @@ class BaseQuantizer(metaclass = ABCMeta):
             list_of_passes.append(LayerwiseEqualizationPass(
                 optimize_level       = equalization_setting.opt_level,
                 iterations           = equalization_setting.iterations,
-                weight_threshold     = equalization_setting.value_threshold,
+                value_threshold     = equalization_setting.value_threshold,
                 including_bias       = equalization_setting.including_bias,
                 including_act        = equalization_setting.including_act,
                 bias_multiplier      = equalization_setting.bias_multiplier,

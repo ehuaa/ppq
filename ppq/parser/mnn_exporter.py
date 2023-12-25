@@ -4,7 +4,7 @@ import json
 
 from ppq.core import NetworkFramework
 from ppq.IR import BaseGraph,GraphExporter
-from .caffe_exporter import CaffeExporter
+# from .caffe_exporter import CaffeExporter
 from .onnx_exporter import OnnxExporter
 
 

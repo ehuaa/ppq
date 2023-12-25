@@ -1,9 +1,9 @@
 from ppq.core import NetworkFramework, TargetPlatform
 from ppq.IR import BaseGraph, GraphBuilder, GraphExporter
 
-from .caffe_exporter import (CaffeExporter, PPLDSPCaffeExporter,
-                             PPLDSPTICaffeExporter, SNPECaffeExporter)
-from .caffe_parser import CaffeParser
+# from .caffe_exporter import (CaffeExporter, PPLDSPCaffeExporter,
+#                              PPLDSPTICaffeExporter, SNPECaffeExporter)
+# from .caffe_parser import CaffeParser
 from .extension import ExtensionExporter
 from .native import NativeExporter, NativeImporter
 from .nxp_exporter import NxpExporter

@@ -20,7 +20,7 @@ class QuantizeSimplifyPass(QuantizationOptimizationPass):
 
     PPQ use Tensor Quantization Configuration(A data structure defined in ppq.core) to
     control quantization. Each quantable op will have a list of TQC as its quantization config,
-    which contains necessary quantization parameter(scale, offset), in order to quantize its input(s) and output(s).
+    which contains necessary quantization parameter(scale, offset), in order to quantize its input(s) and output(s).        每个可量化的op都有一系列的TQC作为其量化配置，里面包含scale和offset来quantize其输入输出
 
     While TQC is a powerful tool for describing quantization, it introduces some undiserible features:
     
@@ -30,7 +30,7 @@ class QuantizeSimplifyPass(QuantizationOptimizationPass):
     
     PPQ will create at least 4 TQC here, namely the input TQC of Relu1 and Relu2, and the output TQC of Relu1 and Relu2.
     Problem here is the output TQC of Relu1 and the input TQC of Relu2 is actually duplicated, the output variable
-    should not be quantized twice.
+    should not be quantized twice.                                                                                             input和output的TQC其实重复了，上一个op的output不能被量化两次
 
     This Simplify Pass will detect all the duplicated TQCs in your network, disable them and create a link with their
     dominating TQCs. Disabled TQC will have and inactive state(QuantizationState.OVERRLAPED), so PPQ executor will 
@@ -82,7 +82,7 @@ class QuantizeSimplifyPass(QuantizationOptimizationPass):
                 if downstream_op is None: continue # output variables in network, they do not have a destination
                 if not isinstance(downstream_op, QuantableOperation): continue
 
-                input_config = downstream_op.config.input_quantization_config[dest_idx]
+                input_config = downstream_op.config.input_quantization_config[dest_idx]                                                     # 将op的输入的TQC的dominated_by设置为source_op的output_config,即省掉一次量化
                 if source_op.platform == downstream_op.platform:
                     if input_config.state == QuantizationStates.INITIAL and input_config.is_same_scheme(source_config):
                         input_config.dominated_by = source_config
@@ -92,17 +92,17 @@ class QuantizeFusionPass(QuantizationOptimizationPass):
     """
     ## PPQ Quantize Fusion Pass(通用量化图融合过程)
     
-    Operation fusion (or kernel/layer fusion) is key optimization in many state-of-the-art execution frameworks.
+    Operation fusion (or kernel/layer fusion) is key optimization in many state-of-the-art execution frameworks.    op fusion是很多推理网络中的关键技术
 
     Graph fusion can combine operations into a single op to obtain higher accuracy and performance,
         Pattern like: Conv + Relu can be reduced to ConvRelu. This fusion will reduce memory accesses,
-        and the quantization point after conv can also be removed.
+        and the quantization point after conv can also be removed.                                                  conv+relu op融合之后变成ConvRelu,减少访存占用，conv之后的量化也可以移除 
 
-    Technically we can fuse those layers before quantization, while fused layers are not supported by onnx standard.
+    Technically we can fuse those layers before quantization, while fused layers are not supported by onnx standard.    但是execution framework不支持ConvRelu这种算子的转换，所以不能在融合layer之后quantization
         So to say ConvRelu is not a valid onnx operation, no execution framework can parse it.
 
     Therefore, PPQ will simulate the graph fusion by adjusting quantization config: if PPQ finds their is a
-        pattern like Conv + Relu, the output quantization of Conv will be disabled, pretending that the Conv + Relu 
+        pattern like Conv + Relu, the output quantization of Conv will be disabled, pretending that the Conv + Relu     所以ppq会通过调整quantization的config来模拟graph fusion,如果ppq发现Conv+Relu，就会把conv的输出量化关闭，假装conv+relu融合已经发生
         fusion has happened.
 
     This Pass is designed for 2 types graph fusion:
@@ -116,14 +116,14 @@ class QuantizeFusionPass(QuantizationOptimizationPass):
         for complex activation functions like mish, swish, 
         will be represented as mish = tanh + mul + softplus, swish = sigmoid + mul in onnx,
         cause onnx does not have a op defination for them.
-        Identifying those complex patterns requires pattern matching, which is implemented in ppq.IR.search.py
+        Identifying those complex patterns requires pattern matching, which is implemented in ppq.IR.search.py          switsh在onnx中表示为sigmoid+mul, mish表示为tanh+mul+softplus, ppq中也会进行识别
 
     Complex quantization fusions must be invoked manually, PPQ implemented softplus & swish fusion functions in
         ppq.quantization.optim.refine.MishFusionPass
         ppq.quantization.optim.refine.SwishFusionPass
 
-    For passive operation fusion, PPQ will keep the input and the output variable share a same scale for passive operations.
-        An operation is identified as passive op only if its attribute "is_active_quant_op" = False, this
+    For passive operation fusion, PPQ will keep the input and the output variable share a same scale for passive operations.    PASSIVE OPERATIONS 是那些不参与计算的 Op, 这些 op 的输入与输出将直接共享 scale 同时这些 op 前后的定点过程将被直接停用
+        An operation is identified as passive op only if its attribute "is_active_quant_op" = False, this              
         attribute is initialized by quantizer.
 
     If there is a passive operation having multiple input and output, the fusion procedure will make its
@@ -190,7 +190,9 @@ class QuantizeFusionPass(QuantizationOptimizationPass):
         processor = SearchableGraph(graph)
 
         # fuse computing operations and its following activation.
-        if self.fuse_activation:
+        if self.fuse_activation:        # 如果fuse_activation为True，寻找conv->relu/sigmoid 这种计算op->激活op的模式子图， exclusive为True即严格输入输出节点不能有模式子图外的节点参与
+            # 1. 不允许模式子图中除根节点外的其他节点有来自模式子图以外节点的输入
+            # 2. 不允许模式子图中除叶节点外的其他节点有朝向模式子图以外节点的输出
             patterns = processor.pattern_matching(
                 patterns=[lambda x: x.is_computing_op, lambda x: x.type in self.activation_types],
                 edges=[[0, 1]], exclusive=True)
@@ -218,7 +220,7 @@ class QuantizeFusionPass(QuantizationOptimizationPass):
                     patterns = [lambda x: x.is_computing_op, 'Sigmoid', 'Mul'],
                     edges = [[0, 1], [1, 2], [0, 2]],
                     exclusive = True)
-
+                # conv ->sigmoid, sigmoid->mul, conv->mul 这种模式的子图
                 for pattern in patterns:
                     if any([not isinstance(op, QuantableOperation) for op in pattern]):
                         ppq_warning(f'There is a pattern of swish activation in your network start from {pattern[0]}, '
@@ -237,11 +239,11 @@ class QuantizeFusionPass(QuantizationOptimizationPass):
                     assert isinstance(mul, QuantableOperation)
 
                     master_config = mul.config.output_quantization_config[0]
-                    computing.config.output_quantization_config[0].dominated_by = master_config
+                    computing.config.output_quantization_config[0].dominated_by = master_config     # PPQ use this property to find root configuration for each configuration group, 当dominated_by!=self时说明已经被其他的TQC进行量化
                     sigmoid.config.input_quantization_config[0].dominated_by    = master_config
                     sigmoid.config.output_quantization_config[0].dominated_by   = master_config
                     mul.config.input_quantization_config[0].dominated_by        = master_config
-                    mul.config.input_quantization_config[1].dominated_by        = master_config
+                    mul.config.input_quantization_config[1].dominated_by        = master_config        # 全融合在一起了 都使用一个相同的TQC来优化
 
             if 'Mish' in self.activation_types:
                 search_engine = SearchableGraph(graph)
@@ -288,7 +290,7 @@ class QuantizeFusionPass(QuantizationOptimizationPass):
                     self.is_same_platform([op, source_op])):
                     TQC = op.config.input_quantization_config[0]
                     for output_cfg in op.config.output_quantization_config:
-                        output_cfg.dominated_by = TQC
+                        output_cfg.dominated_by = TQC                                           # 对于passive量化操作的算子输出量化的参数都和第一个输入量化的参数保持一致
 
         if self.fuse_relu_clip:
             patterns = processor.pattern_matching(

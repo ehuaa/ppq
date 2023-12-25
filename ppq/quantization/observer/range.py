@@ -58,9 +58,9 @@ def minmax_to_scale_offset(
         scale = max(scale, scale_threshold)
         offset = ppq_numerical_round(-min_val / scale)
 
-    elif config.policy.has_property(QuantizationProperty.SYMMETRICAL):
-        range = 2 * float(max(abs(max_val), abs(min_val)))
-        scale  = range / (config.quant_max - config.quant_min)
+    elif config.policy.has_property(QuantizationProperty.SYMMETRICAL):      # TensorRT是对称量化，因此offset是0
+        range = 2 * float(max(abs(max_val), abs(min_val)))      # 首先获取max, min的绝对值最大值，即正负的range范围
+        scale  = range / (config.quant_max - config.quant_min)      # 计算scale 即range到(-128,+127)的映射系数
         if scale < scale_threshold and OBSERVER_WARNING: 
             ppq_warning('Numeric instability detected: '
                         'ppq find there is a scale value < 1e-7, '
@@ -79,8 +79,8 @@ class TorchMinMaxObserver(BaseTensorObserver):
     """ TorchMinMaxObserver collects min and max value of given tensor. """
     def __init__(self, watch_on: Variable, quant_cfg: TensorQuantizationConfig):
         super().__init__(watch_on, quant_cfg)
-        self._min_val_collector = []
-        self._max_val_collector = []
+        self._min_val_collector = []            # 最小值collector      通过统计最大最小值来进行int8的range映射
+        self._max_val_collector = []            # 最大值collector
 
     @ torch.no_grad()
     def observe(self, value: torch.Tensor):
@@ -88,19 +88,19 @@ class TorchMinMaxObserver(BaseTensorObserver):
         assert value.numel() > 0, (f'You are observing an empty tensor({self._watch_on.name}).')
         if self._quant_cfg.state == QuantizationStates.INITIAL:
             if self._quant_cfg.policy.has_property(QuantizationProperty.PER_TENSOR):
-                self._min_val_collector.append(value.min().reshape(shape=[1, ]))
+                self._min_val_collector.append(value.min().reshape(shape=[1, ]))    # per-tensor 1维向量 append一个整个tensor的最大最小值
                 self._max_val_collector.append(value.max().reshape(shape=[1, ]))
             elif self._quant_cfg.policy.has_property(QuantizationProperty.PER_CHANNEL):
                 channel_axis = self._quant_cfg.channel_axis
-                channelwise_view = value.transpose(dim0=0, dim1=channel_axis).unsqueeze(-1)
-                channelwise_view = torch.flatten(channelwise_view, start_dim=1)
-                self._min_val_collector.append(torch.min(channelwise_view, dim=1, keepdim=True)[0])
+                channelwise_view = value.transpose(dim0=0, dim1=channel_axis).unsqueeze(-1)     # transpose 本质上就是按照transpose的轴对换下标对应的数值， unsqueeze在最后加一个维度 eg.(64,3,6,6)->(64,3,6,6,1) q其实就是把每一个数值都变为只有自己的一个tensor
+                channelwise_view = torch.flatten(channelwise_view, start_dim=1)     # 从start_dim到last_dim的维度全部消除(64,3,6,6,1)->(64,108)
+                self._min_val_collector.append(torch.min(channelwise_view, dim=1, keepdim=True)[0]) # 指定dim上的最小值，keepdims是True的话，输出和输入的维度是一样的，不然会dim被squeeze掉，即那一维被减掉 (64,108)->(64, 1) 但每个 kernel 会单独统计一个 scale 和 zeropoint（注意是每个 kernel，而不是 kernel 的每个 channel）所以是64个kennel分开统计
                 self._max_val_collector.append(torch.max(channelwise_view, dim=1, keepdim=True)[0])
             else:
                 raise TypeError('Min-max Observer only work with per-tensor or per-channel quantize policy.')
 
     def render_quantization_config(self):
-        # If TQC is not prepared for calibration, just skip this execution.
+        # If TQC is not prepared for calibration, just skip this execution.                 # 注意render之后才是activated
         if self._quant_cfg.state not in {QuantizationStates.INITIAL}: return
 
         if len(self._max_val_collector) == 0:
@@ -115,10 +115,10 @@ class TorchMinMaxObserver(BaseTensorObserver):
                 config=self._quant_cfg)
             self._quant_cfg.scale  = torch.tensor([scale], dtype=torch.float32, device=device).squeeze(0)
             self._quant_cfg.offset = torch.tensor([offset], dtype=torch.float32, device=device).squeeze(0)
-            self._quant_cfg.state = QuantizationStates.ACTIVATED
+            self._quant_cfg.state = QuantizationStates.ACTIVATED                    # 量化之后把state设置成activated
 
         elif self._quant_cfg.policy.has_property(QuantizationProperty.PER_CHANNEL):
-            min_vals = torch.min(torch.cat(self._min_val_collector, dim=-1), dim=-1, keepdim=False)[0].cpu().numpy()
+            min_vals = torch.min(torch.cat(self._min_val_collector, dim=-1), dim=-1, keepdim=False)[0].cpu().numpy()        # torch.cat 除拼接维度dim数值可不同外其余维的dim数值需相同 (64,1)->(64,) 变成一个一维向量
             max_vals = torch.max(torch.cat(self._max_val_collector, dim=-1), dim=-1, keepdim=False)[0].cpu().numpy()
             assert(len(min_vals) == len(max_vals)), 'Min values and max values should at same length.'
             scales, offsets = [], []
@@ -130,7 +130,7 @@ class TorchMinMaxObserver(BaseTensorObserver):
 
             # scale, offset here only deployed on cpu
             # we will move them towards target device through RunnableGraph
-            self._quant_cfg.scale  = torch.tensor(scales, dtype=torch.float32, device=device)
+            self._quant_cfg.scale  = torch.tensor(scales, dtype=torch.float32, device=device)           # 对于Conv weight参数，每个channel一个scale和offset，所以是(out_channel)大小
             self._quant_cfg.offset = torch.tensor(offsets, dtype=torch.float32, device=device)
             self._quant_cfg.state = QuantizationStates.ACTIVATED
         else:
@@ -140,10 +140,10 @@ class TorchMinMaxObserver(BaseTensorObserver):
 class TorchHistObserver(TorchMinMaxObserver):
     """ TorchHistObserver collects histogram of given tensor. 
 
-    It is designed for per-tensor quantization or activation quantization.
+    It is designed for per-tensor quantization or activation quantization.          # per-tensor的量化或者激活量化
     """
     def __init__(self, watch_on: Variable, quant_cfg: TensorQuantizationConfig,
-                 hist_bins: int = OBSERVER_KL_HIST_BINS):
+                 hist_bins: int = OBSERVER_KL_HIST_BINS):   # 默认4096个bins
         self._phase = 'Detecting Minmax'
         self._hist  = None
         self._hist_scale = None
@@ -160,12 +160,12 @@ class TorchHistObserver(TorchMinMaxObserver):
 
         assert value.numel() > 0, (f'You are observing an empty tensor({self._watch_on.name}).')
 
-        if self._phase == 'Detecting Minmax':
+        if self._phase == 'Detecting Minmax':                                                                   # hist是two-phase的，第一阶段还是minmax 找到最大最小值
             return super().observe(value) # collect min, max
 
-        elif self._phase == 'Collating Hist':
+        elif self._phase == 'Collating Hist':   # 此时使用hist
             if self._hist is None:
-                self._hist = torch.zeros(size=(self._hist_bins,), dtype=torch.int32, device=value.device)
+                self._hist = torch.zeros(size=(self._hist_bins,), dtype=torch.int32, device=value.device)       # tensor([0, 0, 0,  ..., 0, 0, 0], dtype=torch.int32, device=)  2048个0组成的1维tensor
 
             if self._quant_cfg.policy.has_property(QuantizationProperty.ASYMMETRICAL):
                 # ASYMMETRICAL Hist
@@ -180,7 +180,7 @@ class TorchHistObserver(TorchMinMaxObserver):
                 if PPQ_CONFIG.USING_CUDA_KERNEL and value.is_cuda:
                     CUDA.Histogram_T(tensor=value, histogram=self._hist, scale=self._hist_scale)
                 else:
-                    hist = torch.histc(torch.abs(value), self._hist_bins, min=0, max=self._hist_scale * self._hist_bins)
+                    hist = torch.histc(torch.abs(value), self._hist_bins, min=0, max=self._hist_scale * self._hist_bins)        # 将value中的每个值转化为abs(value) 并划分在4096个bins中，返回的list是4096个值，里面包含每个bin中的数量
                     self._hist += hist.int()
 
             else:
@@ -198,7 +198,7 @@ class TorchHistObserver(TorchMinMaxObserver):
 
         With a pre-defined histogram,
         this function will automatically search best clip value
-        to minimize KL divergence between quantized result and fp32 input.
+        to minimize KL divergence between quantized result and fp32 input.      # 自动搜索最佳的截断值
 
         only work for per-tensor symmetrical quantization policy for now.
         see also https://on-demand.gputechconf.com/gtc/2017/presentation/s7310-8-bit-inference-with-tensorrt.pdf
@@ -238,38 +238,38 @@ class TorchHistObserver(TorchMinMaxObserver):
         # see also
         # https://github.com/NVIDIA/TensorRT/blob/3835424af081db4dc8cfa3ff3c9f4a8b89844421/tools/pytorch-quantization/pytorch_quantization/calib/histogram.py#L147
 
-        losses, quant_bins = [], 2 ** (config.num_of_bits - 1)
+        losses, quant_bins = [], 2 ** (config.num_of_bits - 1)      # losses 以及要量化到的区间数量 这里是128
 
         # following code is curcial, do not remove
         histogram[: int(hist_bins * .002)] = 0
-        histogram[int(hist_bins * .002)] = 1
+        histogram[int(hist_bins * .002)] = 1                        # 一些预处理 其前千分之二置为零，第千分之二个条形置为1
 
         hist_sum = torch.sum(histogram)
-        for bin_range in range(quant_bins, hist_bins + quant_bins - 1, quant_bins):
+        for bin_range in range(quant_bins, hist_bins + quant_bins - 1, quant_bins):     # NVIDIA是（128，2048），这里是步长为quant_bins 从quant_bins到hist_bins
             p_hist = torch.zeros(size=(bin_range, ), dtype=torch.float, device=computing_device)
-            p_hist[: bin_range].copy_(histogram[: bin_range])
-            p_hist[bin_range - 1] += torch.sum(histogram[bin_range: ])
-            p_hist = p_hist / hist_sum
+            p_hist[: bin_range].copy_(histogram[: bin_range])           # 只拷贝bin_range个数据到p_hist
+            p_hist[bin_range - 1] += torch.sum(histogram[bin_range: ])  # bin_range后面的全部累加到bin_range - 1
+            p_hist = p_hist / hist_sum                                  # 归一化
 
-            expand_ratio = int(bin_range / quant_bins)
-            q_hist = histogram[: bin_range].clone()
-            q_hist = q_hist.reshape((quant_bins, expand_ratio))
-            positive_map = q_hist > 0
-            positive_cnt = positive_map.sum(axis=1, keepdim=True)
-            positive_cnt[positive_cnt == 0] = 1
-            q_hist = torch.div(q_hist.sum(axis=1, keepdim=True), positive_cnt)
-            q_hist = q_hist.repeat([1, expand_ratio])
-            q_hist = q_hist * positive_map
-            q_hist = q_hist / torch.sum(q_hist)
-            q_hist = q_hist.flatten()
+            expand_ratio = int(bin_range / quant_bins)                  # 计算目前的bin_range相比quant_bins的膨胀系数 比如quant_bins是256 bin_range为128时，此值为2
+            q_hist = histogram[: bin_range].clone()                     # [1, 256]
+            q_hist = q_hist.reshape((quant_bins, expand_ratio))         # [128, 2]
+            positive_map = q_hist > 0                                           # 计算mask，[128, 2] True or False组成
+            positive_cnt = positive_map.sum(axis=1, keepdim=True)               # 计算每行大于0的数量 [128, 1]
+            positive_cnt[positive_cnt == 0] = 1                                   # 避免被除数为0， 0的地方置为1
+            q_hist = torch.div(q_hist.sum(axis=1, keepdim=True), positive_cnt)      # 每行的和/每行非0个数，[128, 1]
+            q_hist = q_hist.repeat([1, expand_ratio])                               # 根据膨胀系数恢复到 [128, 2]
+            q_hist = q_hist * positive_map                                          # 用mask乘一下，即为0的地方还要是0，过滤下0
+            q_hist = q_hist / torch.sum(q_hist)                                     # 归一化
+            q_hist = q_hist.flatten()                                               # 平铺[1, 256]
 
             losses.append({
-                'kl': torch_KL_divergence(p_hist, q_hist),
-                'bin_range': bin_range
+                'kl': torch_KL_divergence(p_hist, q_hist),      # 存储当前的p_hist与原始的q_hist的分布的kl散度
+                'bin_range': bin_range                          # 记录当前的bin_range
             })
 
-        best_bin_range = sorted(losses, key=lambda x: x['kl'])[0]['bin_range']
-        scale, offset = (best_bin_range / self._hist_bins) * hist_scale * (self._hist_bins / quant_bins), 0
+        best_bin_range = sorted(losses, key=lambda x: x['kl'])[0]['bin_range']          # kl散度最小的时候bin_range即为最佳取值
+        scale, offset = (best_bin_range / self._hist_bins) * hist_scale * (self._hist_bins / quant_bins), 0         # 可以理解为best_bin_range * hist_scale/quant_bins
         
         if scale < scale_threshold and OBSERVER_WARNING: 
             ppq_warning('Numeric instability detected: '
@@ -285,19 +285,19 @@ class TorchHistObserver(TorchMinMaxObserver):
         # If TQC is not prepared for calibration, just skip this execution.
         if self._quant_cfg.state not in {QuantizationStates.INITIAL}: return
 
-        if not self._quant_cfg.policy.has_property(QuantizationProperty.PER_TENSOR):
+        if not self._quant_cfg.policy.has_property(QuantizationProperty.PER_TENSOR):                # hist只能做PER_TENSOR的量化
             raise ValueError('Hist observer can only apply with per-tensor quantization config.')
 
         if self._phase == 'Detecting Minmax':
-            min_val = torch.min(torch.cat(self._min_val_collector, dim=0)).cpu().item()
+            min_val = torch.min(torch.cat(self._min_val_collector, dim=0)).cpu().item()     # 首先拿到min，max
             max_val = torch.max(torch.cat(self._max_val_collector, dim=0)).cpu().item()
-            if self._quant_cfg.policy.has_property(QuantizationProperty.SYMMETRICAL):
+            if self._quant_cfg.policy.has_property(QuantizationProperty.SYMMETRICAL):       # 对称量化hist的range设置为max和min的绝对值的最大值
                 hist_range = float(max(abs(max_val), abs(min_val)))
             else:
-                hist_range = max_val - min_val
+                hist_range = max_val - min_val                                              # 非对称的话就是max-min
             self._min = min_val
             self._max = max_val
-            self._hist_scale = hist_range / self._hist_bins
+            self._hist_scale = hist_range / self._hist_bins                                 # hist_scale 即每个bin的宽度 hist_range/self._hist_bins
             self._phase = 'Collating Hist'
         elif self._phase == 'Collating Hist':
             scale, offset = self.hist_to_scale_offset(
@@ -312,7 +312,7 @@ class TorchHistObserver(TorchMinMaxObserver):
 class TorchPercentileObserver(BaseTensorObserver):
     """ TorchPercentileObserver collects percentile data of given tensor. 
 
-    It is designed for activation quantization.
+    It is designed for activation quantization.             为激活量化设计
     """
     def __init__(self, watch_on: Variable, quant_cfg: TensorQuantizationConfig):
         super().__init__(watch_on, quant_cfg)
@@ -338,16 +338,16 @@ class TorchPercentileObserver(BaseTensorObserver):
                 if not PPQ_CONFIG.USING_CUDA_KERNEL or (not value.is_cuda):
                     numel = value.numel()
                     
-                    min_idx, max_idx = int(numel * (1 - self._percentile)), int(numel * (self._percentile))
+                    min_idx, max_idx = int(numel * (1 - self._percentile)), int(numel * (self._percentile))     # min, max不一定是所有数据batch中的最小最大值与percentile参数相关
                     # torch.kthvalue needs index from 1 to numel ...
-                    min_idx = max(0, min_idx) + 1
+                    min_idx = max(0, min_idx) + 1               # numel是tensor中的数值个数 min_idx max_idx的范围是1->numel
                     max_idx = min(max_idx, numel - 1) + 1
-                    _min = torch.kthvalue(value.flatten(), k = min_idx, dim=0)[0].view(1, -1)
-                    _max = torch.kthvalue(value.flatten(), k = max_idx, dim=0)[0].view(1, -1)
-                    self._percentile_collector.append(torch.cat([_max, _min], dim=-1))
+                    _min = torch.kthvalue(value.flatten(), k = min_idx, dim=0)[0].view(1, -1)                    # 转换成二维tensor，并自动补齐第1维的维度 eg.tensor([[0.0406]])  取第k位数
+                    _max = torch.kthvalue(value.flatten(), k = max_idx, dim=0)[0].view(1, -1)                       
+                    self._percentile_collector.append(torch.cat([_max, _min], dim=-1))                              # 结果为一个二维tensor 里面有最大值，最小值 eg.tensor([[0.4627, 0.0406]])
                 else:
-                    self._percentile_collector.append(CUDA.Quantile(value, self._percentile).view(1, -1))
-            elif self._quant_cfg.policy.has_property(QuantizationProperty.PER_CHANNEL):
+                    self._percentile_collector.append(CUDA.Quantile(value, self._percentile).view(1, -1))      
+            elif self._quant_cfg.policy.has_property(QuantizationProperty.PER_CHANNEL):     # percentile不支持per channel的量化
                 raise PermissionError('Percentile observer can not deal with per channel quantization.')
                 channel_axis = self._quant_cfg.channel_axis
                 channelwise_view = value.transpose(dim0=0, dim1=channel_axis)
@@ -365,14 +365,14 @@ class TorchPercentileObserver(BaseTensorObserver):
             if len(self._percentile_collector) == 0:
                 raise ValueError('Can not render quantization config yet, Observer data collator is empty. ' \
                     'Invoke observe() function before render config.')
-            device = self._percentile_collector[-1].device
-            self._percentile_collector = torch.cat(self._percentile_collector, dim=0).float().mean(dim=0).cpu()
+            device = self._percentile_collector[-1].device      # 一个list 里面存储每次calibrate的时候的【最大值，最小值】
+            self._percentile_collector = torch.cat(self._percentile_collector, dim=0).float().mean(dim=0).cpu() # [[1,0],[1,0],[1,0]]->[1,0], 即最大值和最小值的平均值
             scale, offset = minmax_to_scale_offset(
                 min_val = self._percentile_collector[1].item(),
                 max_val = self._percentile_collector[0].item(),
                 config=self._quant_cfg)
 
-            self._quant_cfg.scale  = torch.tensor([scale], dtype=torch.float32, device=device).squeeze(0)
+            self._quant_cfg.scale  = torch.tensor([scale], dtype=torch.float32, device=device).squeeze(0)       # FloatTensor
             self._quant_cfg.offset = torch.tensor([offset], dtype=torch.float32, device=device).squeeze(0)
             self._quant_cfg.state = QuantizationStates.ACTIVATED
         elif self._quant_cfg.policy.has_property(QuantizationProperty.PER_CHANNEL):

@@ -551,7 +551,7 @@ TensorQuantizationConfig 是 PPQ 中的核心数据结构，它总是由 Quantiz
 
             scale (Any):
                 Scale of quantized value, for per-tensor quantization policy, we use a single float as its scale,
-                while for per-channel quantization policy, it will be an array that contains scales for each channel.
+                while for per-channel quantization policy, it will be an array that contains scales for each channel.   # 对于per-channel里面存着每个channel的scale
 
             offset (Any): Quantization offset for ASYMMETRICAL quantization policy,
                 it will be set as 0 in SYMMETRICAL quantization schema.
@@ -604,7 +604,7 @@ TensorQuantizationConfig 是 PPQ 中的核心数据结构，它总是由 Quantiz
         type_check  = isinstance(self.scale, torch.Tensor) and isinstance(self.offset, torch.Tensor)
         valid_states = {QuantizationStates.BAKED, QuantizationStates.PASSIVE_BAKED}
 
-        if export_overlapped: 
+        if export_overlapped: # overlapped状态的算子也要导出scale相关信息
             valid_states.add(QuantizationStates.OVERLAPPED)
         state_check = QuantizationStates.is_activated(self.state) or self.state in valid_states
 
@@ -745,7 +745,7 @@ TensorQuantizationConfig 是 PPQ 中的核心数据结构，它总是由 Quantiz
         
         If current TQC is dominated by other, return father TQC's scale instead.
         """
-        if self.dominated_by == self: return self._scale
+        if self.dominated_by == self: return self._scale                                # 这里scale使用dominated_by的scale
         else: return self.dominated_by.scale
 
     @ property

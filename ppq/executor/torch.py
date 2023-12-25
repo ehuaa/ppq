@@ -461,9 +461,9 @@ class TorchExecutor(BaseGraphExecutor, torch.nn.Module):
         output_names:List[str] = None,
         hooks: Dict[str, RuntimeHook] = None,
     ) -> List[torch.Tensor]:
-        # processing with different input format
+        # processing with different input format            # 在parameter quantization时只是input shape的全零向量input
         if isinstance(inputs, dict):
-            # directly feed value into variables
+            # directly feed value into variables            # 将input的value塞到网络中
             for name, value in inputs.items():
                 if name in self._graph.variables:
                     var = self._graph.variables[name]
@@ -476,7 +476,7 @@ class TorchExecutor(BaseGraphExecutor, torch.nn.Module):
                 assert isinstance(value, torch.Tensor), \
                     f'TorchExecutor can only accept tensor as its input, while {type(value)} was given'
                 # input is acceptable, feed input value
-                self._graph_input_dictionary[key].value = value
+                self._graph_input_dictionary[key].value = value         # 和self._graph.inputs是相同的引用
 
         # processing with output
         last_idx = 0 # record last variable
@@ -535,17 +535,17 @@ class TorchExecutor(BaseGraphExecutor, torch.nn.Module):
                 # forward and collecting result
                 outputs = operation_forward_func(operation, inputs, self._executing_context)
                 outputs = outputs if isinstance(outputs, (list, tuple)) else [outputs]
-                fp_outputs = outputs
+                fp_outputs = outputs    # 变成列表形式
 
                 # quantize all result if is necessary
                 if isinstance(operation, QuantableOperation):
-                    output_configs = [_ for _ in operation.config.output_quantization_config]
-                    outputs = [self.quantize_function(output, config) for output, config in zip(outputs, output_configs)]
+                    output_configs = [_ for _ in operation.config.output_quantization_config]           # 网络前向输出结果之后将结果output和对应的output_quantization_config送入quantize_function进行量化（模拟int8？or 实际部署量化推理的时候也走的这里）
+                    outputs = [self.quantize_function(output, config) for output, config in zip(outputs, output_configs)]       # 对parameter quantization pass来说 部分output指定为fp32，那么不需要量化
 
                 # invoking post-forward hook
                 if operation_runtime_hook is not None:
                     if isinstance(operation_runtime_hook, QuantOPRuntimeHook):
-                        outputs = operation_runtime_hook.post_forward_hook(
+                        outputs = operation_runtime_hook.post_forward_hook(                         # parameter quantization中的output_quantization_config不在observer_table中
                             outputs=fp_outputs, quant_outputs=outputs,
                             quant_configs=output_configs)
                     elif isinstance(operation_runtime_hook, RuntimeHook):
@@ -562,7 +562,7 @@ class TorchExecutor(BaseGraphExecutor, torch.nn.Module):
             except Exception as _:
                 raise RuntimeError(f'Op Execution Error: {str(operation)}') from _
 
-            # remove useless value(runtime clear).
+            # remove useless value(runtime clear).      # runtime clear下内存
             visited_op.append(operation)
             for var in operation.inputs:
                 if var.is_parameter: continue
@@ -623,7 +623,7 @@ class TorchExecutor(BaseGraphExecutor, torch.nn.Module):
         Args:
             hooks (Dict[str, RuntimeHook], optional):
                 A hook table for customizing operation behaviour and collate data during executing.
-                All hooks should inherit from class RuntimeHook, with all necessary methods implemented.
+                All hooks should inherit from class RuntimeHook, with all necessary methods implemented.    在执行的时候收集数据
                     See also: ppq.executor.base.RuntimeHook
 
                 Executor calls hook.pre_forward_hook(operation, input_data) before dispatching operation,

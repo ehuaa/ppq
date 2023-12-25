@@ -175,7 +175,7 @@ class GraphPattern():
         构成的图必须可以进行拓扑排序，不可以检索有环结构，不可以检索不连通结构
         例子：
             pattern = ['Conv', 'Conv', 'Conv'],
-            edges = [[0, 1], [1, 2], [0, 2]]
+            edges = [[0, 1], [1, 2], [0, 2]]， 这个edge是有向边，不能是有环的
 
         描述了一个类似这样的树形结构:
         
@@ -397,7 +397,7 @@ class SearchableGraph(GraphCommandProcessor):
         super().__init__(graph)
         self._cache = {}
 
-    def process(self, command: GraphCommand) -> Any:
+    def process(self, command: GraphCommand) -> Any:        # 用于全图搜索对应的op或者其他的模式匹配
         if isinstance(command, TraversalCommand):
             if command.command_type == GraphCommandType.TRAVERSAL_PATTERN_MATCHING:
                 return self.path_matching(

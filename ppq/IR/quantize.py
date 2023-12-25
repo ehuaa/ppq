@@ -204,7 +204,7 @@ class QuantableVariable(Variable):
         self._fp32_value = value
 
     @ property
-    def dest_op_configs(self) -> List[TensorQuantizationConfig]:
+    def dest_op_configs(self) -> List[TensorQuantizationConfig]:        # 目标op的input_quantization_config的集合
         _dest_op_configs, _dest_idx = [], self.dest_idx
         for idx, op in enumerate(self.dest_ops):
             if isinstance(op, QuantableOperation):
@@ -272,8 +272,8 @@ class QuantableGraph(GraphCommandProcessor):
         self,
         operation_name: str,
         target_platform: TargetPlatform,
-        quantization_config: OperationQuantizationConfig
-    ) -> QuantableOperation:
+        quantization_config: OperationQuantizationConfig        # OQC里面包含input_quantization_config (输入tensor的TQC) output_quantization_config(输出tensor的TQC) 以及 是否是被动量化还是主动量化
+    ) -> QuantableOperation:                                    # TQC中主要是有quant_min, quant_max, 还有scale，以及非对称量化中的offset
         if operation_name not in self.graph.operations:
             raise KeyError(f'Operation {operation_name} is not in your graph, Please check your input.')
 
@@ -288,9 +288,9 @@ class QuantableGraph(GraphCommandProcessor):
         if self._next_command_processor is None:
             raise RuntimeError(
                 'To replace a operation, your processor chain must have a GraphReplacer Processor.')
-        self._next_command_processor(ReplaceOperationCommand(operation_name, quantized_operation))
+        self._next_command_processor(ReplaceOperationCommand(operation_name, quantized_operation))  # 用任务链的下一个processor 替换当前operation为量化的operation
 
-        # replace all related variable with quantable one.
+        # replace all related variable with quantable one.          # 用任务链的下一个processor替换operation的inputs和outputs的variable值为QuantableVariable
         for var in quantized_operation.inputs + quantized_operation.outputs:
             if isinstance(var, QuantableVariable): continue
             self._next_command_processor(
@@ -299,6 +299,7 @@ class QuantableGraph(GraphCommandProcessor):
                     replace_to=QuantableVariable(convert_from=var)
                 )
             )
+        # 暂存一下op中原始的parameter的value到stored_value中，便于后续dequantize或者restore的时候使用原value
         quantized_operation.store_parameter_value()
 
     def dequantize_operation(

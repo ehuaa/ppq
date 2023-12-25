@@ -248,7 +248,7 @@ class BaseGraph(Serializable):
     """
     def __init__(self, name: str, built_from: NetworkFramework = NetworkFramework.NATIVE) -> None:
         super().__init__()
-        self._operations    = {}
+        self._operations    = {}    # {op_name: 对应op的信息} 对于conv算子 op的信息包含 inputs:[输入，权重，bias]分别对应0， 1， 2 socket in_plat[0:,1:,2:], out_plat, links[0:,1:,2:]
         self._variables     = {}
         self._graph_inputs  = {}
         self._graph_outputs = {}

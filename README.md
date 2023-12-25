@@ -20,7 +20,7 @@ PPQ 的开发与推理框架关系密切，这使得我们能够了解硬件推�
    3. 更为强大的 [图模式匹配](https://github.com/openppl-public/ppq/blob/master/ppq/IR/search.py) 与 [图融合功能](https://github.com/openppl-public/ppq/blob/master/ppq/IR/morph.py)
    4. 基于 Onnx 的模型 [QAT](https://github.com/openppl-public/ppq/blob/master/ppq/samples/QAT/imagenet.py) 功能
    5. 全新的 [TensorRT](https://github.com/openppl-public/ppq/blob/master/md_doc/deploy_trt_by_OnnxParser.md) 量化与导出逻辑
-   6. 更多正在更新的样例脚本及视频内容
+   6. 全球最大的量化模型库 [OnnxQuant](https://github.com/openppl-public/ppq/tree/master/ppq/samples/QuantZoo)
    7. 其他未知的软件特性
 
 ### Installation (安装方法)
@@ -191,17 +191,17 @@ PPQ is tested with models from mmlab-classification, mmlab-detection, mmlab-sega
 | fsaf | Detection | 32 imgs | pplnn | bbox_mAP | 36.5% | 36.6% | 37.4% |
 | mask_rcnn | Detection | 32 imgs | pplnn | bbox_mAP | 37.7% | 37.6% | 37.9% |
 |  ----  |  ----  |  ----  |  ----  |  ----  |  ----  |  ----  |  ----  |
-| deeplabv3 | Segamentation | 32 imgs | conservative | aAcc / mIoU | 96.13% / 78.81% | 96.14% / 78.89%  | 96.17% / 79.12% |
-| deeplabv3plus | Segamentation | 32 imgs | conservative | aAcc / mIoU | 96.27% / 79.39% | 96.26% / 79.29%  | 96.29% / 79.60% |
-| fcn | Segamentation | 32 imgs | conservative | aAcc / mIoU | 95.75% / 74.56% | 95.62% / 73.96%  | 95.68% / 72.35% |
-| pspnet | Segamentation | 32 imgs | conservative | aAcc / mIoU | 95.79% / 77.40% | 95.79% / 77.41%  | 95.83% / 77.74% |
+| deeplabv3 | Segmentation | 32 imgs | conservative | aAcc / mIoU | 96.13% / 78.81% | 96.14% / 78.89%  | 96.17% / 79.12% |
+| deeplabv3plus | Segmentation | 32 imgs | conservative | aAcc / mIoU | 96.27% / 79.39% | 96.26% / 79.29%  | 96.29% / 79.60% |
+| fcn | Segmentation | 32 imgs | conservative | aAcc / mIoU | 95.75% / 74.56% | 95.62% / 73.96%  | 95.68% / 72.35% |
+| pspnet | Segmentation | 32 imgs | conservative | aAcc / mIoU | 95.79% / 77.40% | 95.79% / 77.41%  | 95.83% / 77.74% |
 |  ----  |  ----  |  ----  |  ----  |  ----  |  ----  |  ----  |  ----  |
 | srcnn | Editing | 32 imgs | conservative | PSNR / SSIM | 27.88% / 79.70% | 27.88% / 79.07%  | 28.41% / 81.06% |
 | esrgan | Editing | 32 imgs | conservative | PSNR / SSIM | 27.84% / 75.20% | 27.49% / 72.90%  | 27.51% / 72.84% |
 
 * PPQ(sim) stands for PPQ quantization simulator's result.
 * Dispatcher stands for dispatching policy of PPQ.
-* Classification models are evaluated with ImageNet, Detection and Segamentation models are evaluated with the COCO dataset, Editing models are evaluated with DIV2K dataset.
+* Classification models are evaluated with ImageNet, Detection and Segmentation models are evaluated with the COCO dataset, Editing models are evaluated with DIV2K dataset.
 * All calibration datasets are randomly picked from training data.
 
 ### License

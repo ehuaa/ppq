@@ -274,10 +274,10 @@ def Conv_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     stride    = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='strides', default=1)
     auto_pad  = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='auto_pad', default='NOTSET')
 
-    x, w = values[: 2]
-    b = values[2] if len(values) > 2 else None
+    x, w = values[: 2]                      # 前两项是输入tensor和weight
+    b = values[2] if len(values) > 2 else None          # bias
 
-    ndim = w.ndim
+    ndim = w.ndim                   # 取weight的维度
 
     # conv - 1d
     if ndim in {2, 3}:
@@ -291,7 +291,7 @@ def Conv_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
             padding=torch_pads, dilation=dilation, stride=stride)
 
     # conv - 2d
-    elif ndim == 4:
+    elif ndim == 4:         # ndim=4 2d卷积
         process_attribute(op.attributes, values[0].shape[2:], values[1].shape[2:])
         # onnx pads format[top, left, bottom, right] to torch pads format[left, right, top, bottom]
         if isinstance(onnx_pads, list) and len(onnx_pads) == 4:
@@ -304,7 +304,7 @@ def Conv_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
                 onnx_pads = 0
 
         output = F.conv2d(
-            input=x, weight=w, bias=b, groups=groups, padding=onnx_pads,
+            input=x, weight=w, bias=b, groups=groups, padding=onnx_pads,            # torch的conv2d卷积函数
             dilation=dilation, stride=stride)
 
     # conv - 3d

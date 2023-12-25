@@ -28,8 +28,8 @@ class TensorObserverFactroy():
             'Observer Factory can not be initialized, use TensorObserverFactroy.build_observer instead.')
 
     @ classmethod
-    def build_observer(cls, variable: Variable, config: TensorQuantizationConfig) -> BaseTensorObserver:
-        algorithm = str(config.observer_algorithm.lower())
+    def build_observer(cls, variable: Variable, config: TensorQuantizationConfig) -> BaseTensorObserver:        # 根据对应的校准算法调用类
+        algorithm = str(config.observer_algorithm.lower())                      # parameter这里是'minmax'
         if algorithm not in OBSERVER_TABLE:
             raise ValueError(
                 f'Observer type not understand, Except one of {OBSERVER_TABLE.keys()}, '\
@@ -49,7 +49,7 @@ class CalibrationHook(QuantOPRuntimeHook):
 
     def pre_forward_hook(
         self, inputs: list, quant_inputs: list, quant_configs: List[TensorQuantizationConfig]) -> list:
-        for input_var, quant_config in zip(inputs, quant_configs):
+        for input_var, quant_config in zip(inputs, quant_configs):          # 这里是op输入的几个TQC
             if quant_config in self._observer_table:
                 observer = self._observer_table[quant_config]
                 observer.observe(input_var)
@@ -101,19 +101,19 @@ class OperationObserver(metaclass=ABCMeta):
         observer_table = {}
         for var, config in zip(
             self._operation.inputs, self._operation.config.input_quantization_config):
-            if config.state == QuantizationStates.INITIAL:
+            if config.state == QuantizationStates.INITIAL:                                          # bias在初始化时已经state设为了FP32
                 if var in self._operation.parameters and monitor_parameter:
-                    observer_table[config] = TensorObserverFactroy.build_observer(var, config)
+                    observer_table[config] = TensorObserverFactroy.build_observer(var, config)      # 对于所有的parameter observer_algorithm都使用minmax 里面的value是torchMinMaxObserver，其实对于Conv类算子只有weight
                 elif monitor_inputs:
-                    observer_table[config] = TensorObserverFactroy.build_observer(var, config)
+                    observer_table[config] = TensorObserverFactroy.build_observer(var, config)         # 输入需要进行校准
 
         if monitor_outputs:
             for var, config in zip(
                 self._operation.outputs, self._operation.config.output_quantization_config):
                 if config.state == QuantizationStates.INITIAL:
-                    observer_table[config] = TensorObserverFactroy.build_observer(var, config)
+                    observer_table[config] = TensorObserverFactroy.build_observer(var, config)      # 可能有的op的output_quantization_config已经被融合 overlap掉，所以这里会对比如有的Conv算子 不对其进行校准
 
-        return CalibrationHook(operation=self._operation, observer_table=observer_table)
+        return CalibrationHook(operation=self._operation, observer_table=observer_table)        # 将hook绑定在executor graph传入的operation上
 
     @ property
     def hook(self) -> CalibrationHook:

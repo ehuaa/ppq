@@ -24,7 +24,7 @@ from ppq.core import (NetworkFramework, QuantizationPolicy,
 from ppq.IR import BaseGraph, GraphExporter
 from ppq.IR.quantize import QuantableOperation
 
-from .caffe_exporter import CaffeExporter
+# from .caffe_exporter import CaffeExporter
 from .onnxruntime_exporter import OnnxExporter, ONNXRUNTIMExporter
 
 
@@ -58,20 +58,20 @@ class TensorRTExporter_JSON(GraphExporter):
     使用该导出器导出符合 TensorRT 格式要求的量化模型。
     
     PPQ 可以将 TQC 中的量化信息导出到 json，并遵循 TensorRT 支持的格式。
-    用户可以通过 Json 文件将图中所有 variable 的 min, max 传递给 TensorRT
+    用户可以通过 Json 文件将图中所有 variable 的 min, max 传递给 TensorRT           # 用户可以通过 Json 文件将图中所有 variable 的 min, max 传递给 TensorRT 所有未写入 min, max 的变量将保持 fp32(fp16) 精度执行
     所有未写入 min, max 的变量将保持 fp32(fp16) 精度执行。
     """
     def export_quantization_config(self, config_path: str, graph: BaseGraph):
         act_quant_info = {}
         for op in graph.topological_sort():
             if not isinstance(op, QuantableOperation): continue
-            if op.type in {"Gather", "Unsqueeze", "Concat", "Reshape", "Squeeze"}: continue
+            if op.type in {"Gather", "Unsqueeze", "Concat", "Reshape", "Squeeze"}: continue     # 这些算子不进行量化
 
             for cfg, var in op.config_with_variable:
                 if not cfg.can_export(export_overlapped=True): continue
-                if var.is_parameter: continue
+                if var.is_parameter: continue       # parameter的不导出
 
-                if cfg.policy != QuantizationPolicy(
+                if cfg.policy != QuantizationPolicy(            # TensorRT只导出量化config是QuantizationProperty.LINEAR + QuantizationProperty.SYMMETRICAL + QuantizationProperty.PER_TENSOR的算子
                     QuantizationProperty.LINEAR + 
                     QuantizationProperty.SYMMETRICAL + 
                     QuantizationProperty.PER_TENSOR):
@@ -79,12 +79,12 @@ class TensorRTExporter_JSON(GraphExporter):
                                 'Quantization Policy is invalid.')
                     continue
 
-                if cfg.num_of_bits != 8 or cfg.quant_max != 127 or cfg.quant_min != -128:
+                if cfg.num_of_bits != 8 or cfg.quant_max != 127 or cfg.quant_min != -128:           # 目前只支持int8量化 -128，127区间内
                     ppq_warning(f'Can not export quantization config on variable {var.name}, '
                                 'Tensor Quantization Config has unexpected setting.')
                     continue
 
-                act_quant_info[var.name] = cfg.scale.item() * 127
+                act_quant_info[var.name] = cfg.scale.item() * 127                                   # act_quant_info 的value值为 scale * 127， 即区间实际的scale的大小 从这个[-quant_scale, quant_scale] 映射到[-128， 127]
 
         json_qparams_str = json.dumps({'act_quant_info': act_quant_info}, indent=4)
         with open(config_path, "w") as json_file:
@@ -97,7 +97,7 @@ class TensorRTExporter_JSON(GraphExporter):
             if op.type in {"Conv", "Gemm"}:
                 weights_list.extend(op.parameters)
 
-        weight_file_path = os.path.join(os.path.dirname(config_path), "quantized.wts")
+        weight_file_path = os.path.join(os.path.dirname(config_path), "quantized.wts")              # 全部的value值打印出来送进去（未量化）
 
         f = open(weight_file_path, 'w')
         f.write("{}\n".format(len(weights_list)))

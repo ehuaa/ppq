@@ -168,8 +168,8 @@ def dump_torch_to_onnx(
     """
 
     # set model to eval mode, stabilize normalization weights.
-    assert isinstance(model, torch.nn.Module), (
-        f'Model must be instance of torch.nn.Module, however {type(model)} is given.')
+    # assert isinstance(model, torch.nn.Module), (
+    #     f'Model must be instance of torch.nn.Module, however {type(model)} is given.')
     model.eval()
 
     if inputs is None:
@@ -248,7 +248,7 @@ def quantize_onnx_model(
     if setting is None:
         setting = QuantizationSettingFactory.default_setting()
 
-    ppq_ir = load_onnx_graph(onnx_import_file=onnx_import_file)
+    ppq_ir = load_onnx_graph(onnx_import_file=onnx_import_file)     # 从一个指定位置加载 onnx 计算图，注意该加载的计算图尚未经过调度，此时所有算子被认为是可量化的
     ppq_ir = dispatch_graph(graph=ppq_ir, platform=platform, 
                             dispatcher=setting.dispatcher, 
                             dispatching_table=setting.dispatching_table)
@@ -257,7 +257,7 @@ def quantize_onnx_model(
         dummy_input = torch.zeros(size=input_shape, device=device, dtype=input_dtype)
     else: dummy_input = inputs
 
-    quantizer = PFL.Quantizer(platform, ppq_ir)
+    quantizer = PFL.Quantizer(platform, ppq_ir)     # 生成QuantableGraph 一个处理图的processor，以及其他若干对应quantizer的属性
     executor = TorchExecutor(graph=quantizer._graph, device=device)
     if do_quantize:
         quantizer.quantize(

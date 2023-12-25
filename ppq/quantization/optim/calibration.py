@@ -52,7 +52,7 @@ class RuntimeCalibrationPass(QuantizationOptimizationPass):
             
     * override(bool)
 
-            if this parameter is set to True, activations with quantization state = ACTIVATED will also be re-calibrated, 
+            if this parameter is set to True, activations with quantization state = ACTIVATED will also be re-calibrated,   # True的时候重新计算校准后的scale和offset
             runtime calibration pass will overwrite their scales and offsets.
             
             This parameter is introduced since ppq 0.6.4
@@ -110,7 +110,7 @@ class RuntimeCalibrationPass(QuantizationOptimizationPass):
 
         calib_step = 0
         with tqdm(total=self._calib_steps, desc=desc) as progressing_bar:
-            for calib_epoch in range(ceil(self._calib_steps / len(dataloader))):
+            for calib_epoch in range(ceil(self._calib_steps / len(dataloader))):        # 为了从头开始遍历dataloader迭代器，因此这里如果校准步数比dataloader要更大，就多迭代一轮
                 for data in dataloader:
                     if self._collate_fn is not None:
                         data = self._collate_fn(data)
@@ -179,18 +179,18 @@ class RuntimeCalibrationPass(QuantizationOptimizationPass):
         # render calibration result.
         for _, observer in self._observers.items():
             assert isinstance(observer, OperationObserver)
-            observer.render_quantization_config()
+            observer.render_quantization_config()                       # percentile 和hist的校准逻辑
             observer.report()
 
         # -------------------------------------------------
-        # There are some two-phase observer in ppq,
+        # There are some two-phase observer in ppq,                                 # TorchHistObserver 是two-phase 校准 下面代码才会走到
         # which means they have to be calibrated for a second time.
         #   see also: TorchHistObserver
         # -------------------------------------------------
 
         # remove one-phase observer from hook dict.
         pop_list = []
-        for op_name, observer in self._observers.items():
+        for op_name, observer in self._observers.items():                               # 如果里面的observer没有hist或者mse 就pop掉
             assert isinstance(observer, OperationObserver)
             if all([type(var_observer) not in {TorchHistObserver, TorchMSEObserver}
                 for var_observer in observer._hook._observer_table.values()]):

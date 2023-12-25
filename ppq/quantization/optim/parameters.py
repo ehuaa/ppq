@@ -154,15 +154,15 @@ class PassiveParameterQuantizePass(QuantizationOptimizationPass):
 
 
 class ParameterQuantizePass(QuantizationOptimizationPass):
-    """PPQ PassiveParameterQuantizePass completes the quantization of positive
-    parameters. By default, all parameters with initial state will be quantized
+    """PPQ PassiveParameterQuantizePass completes the quantization of positive          对主动量化的参数进行量化
+    parameters. By default, all parameters with initial state will be quantized         所有initial状态的参数都会在这个优化pass中被量化，所有的非参数tensor会通过暂时的dequantization从中排除出来
     during this optimization, all non-parameter tensors will be excluded from
     this pass by temporary dequantization.
 
-    Then, operation observers will be established automatically to record necessary statistics,
+    Then, operation observers will be established automatically to record necessary statistics,                   operation observers 会记录一些关键性的统计数据，从而计算scale和offset
         observers are also responsible for rendering quantization configuration (computing scale and offset).
 
-    This pass needs no data, however it uses fake data to finish a dummy forward process.
+    This pass needs no data, however it uses fake data to finish a dummy forward process.                       这个pass里面不需要真实数据，使用的fake data来进行了一个前向推理
     see also: TorchExecutor.dummy_forward function
     """
     def __init__(self, method: str = None):
@@ -181,22 +181,22 @@ class ParameterQuantizePass(QuantizationOptimizationPass):
         for op_name, operation in graph.operations.items():
             if not isinstance(operation, QuantableOperation): continue
 
-            for config, var in operation.config_with_variable:
+            for config, var in operation.config_with_variable:          # 所有的输入输出的TQC
                 # deactivate non-parameter variable quantization just for now
                 if not var.is_parameter:
                     state_records[config] = config.state
-                    config.state = QuantizationStates.FP32
+                    config.state = QuantizationStates.FP32              # 这一步不量化非参数的variable
                 elif self._method is not None:
                     # override quantizer's setting if necessary
-                    config.observer_algorithm = self._method
+                    config.observer_algorithm = self._method            # 如果定义pass的时候指定了校准方法这里override一下
 
             observer = OperationObserver(
                 operation=executor._graph.operations[op_name],
                 monitor_outputs=False, monitor_inputs=False)
-            observers[op_name] = observer
+            observers[op_name] = observer                               # observer和hook都缓存下，只有parameter才会被observer
             hooks[op_name]     = observer.hook
 
-        # dummy forward, quant all parameter.
+        # dummy forward, quant all parameter.                       带上hook quant所有的参数
         assert isinstance(executor, TorchExecutor), \
             'ParameterQuantizePass Only support TorchExecutor now.'
         executor.dummy_forward(hooks=hooks)
@@ -207,9 +207,9 @@ class ParameterQuantizePass(QuantizationOptimizationPass):
 
             for cfg, var in operation.config_with_variable:
                 if not var.is_parameter:
-                    cfg.state = state_records[cfg]
+                    cfg.state = state_records[cfg]                  # 将非parameter的state恢复成原来的
 
             observer = observers[op_name]
             assert isinstance(observer, OperationObserver)
-            observer.render_quantization_config()
+            observer.render_quantization_config()                   # 根据observer中收集到的数据生成scale和offset参数（如果是非对称量化需要offset参数）
             observer.report()

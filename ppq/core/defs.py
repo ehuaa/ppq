@@ -56,7 +56,7 @@ def empty_ppq_cache(func: Callable):
 
 
 def ppq_quant_param_computing_function(func: Callable):
-    """mark a function to be a scale-computing function.
+    """mark a function to be a scale-computing function.  # 标记是一个计算scale的函数
 
     Args:
         func (Callable): decorated function

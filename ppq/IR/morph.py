@@ -34,6 +34,7 @@ class GraphReplacer(GraphCommandProcessor):
             raise KeyError(f'Operation {op_name} is not in current graph')
         operation = self._graph.operations[op_name]
 
+        # 更新下replace_to即量化后tensor里面的各种operation的引用 variable存在dest op以及source op ，即从哪里input计算出来的，以及下一步要计算指向输出的节点
         replace_to.inputs.clear()
         replace_to.inputs.extend(operation.inputs)
         for input_var in operation.inputs:
@@ -47,14 +48,14 @@ class GraphReplacer(GraphCommandProcessor):
 
         replace_to.parameters.clear()
         replace_to.parameters.extend(operation.parameters)
-
+        # 更新好之后将新的replace_to替换进网络
         self._graph.operations[op_name] = replace_to
 
     def replace_var(self, var_name: str, replace_to: Variable):
         if var_name not in self._graph.variables:
             raise KeyError(f'Variable {var_name} is not in current graph')
         variable = self._graph.variables[var_name]
-
+        # 更新下replace_to即量化后tensor里面的各种variable的引用 variable存在dest op以及source op ，即从哪里input计算出来的，以及下一步要计算指向输出的节点
         replace_to.dest_ops.clear()
         replace_to.dest_ops.extend(variable.dest_ops)
         for dest_op in replace_to.dest_ops:
@@ -66,6 +67,7 @@ class GraphReplacer(GraphCommandProcessor):
             source_idx = variable.source_op.outputs.index(variable)
             variable.source_op.outputs[source_idx] = replace_to
 
+        # 更新好之后替换进graph中的variables中，如果是inputs和outputs的话，也要注意替换一下
         self._graph.variables[var_name] = replace_to
         if var_name in self._graph.inputs:
             self._graph.inputs[var_name] = replace_to
@@ -576,9 +578,9 @@ class GraphMerger(GraphCommandProcessor):
 
                 scale = alpha / torch.sqrt(var + epsilon)
                 group = computing_op.attributes.get('group', 1)
-                scale = scale.reshape([group, 1, -1, 1, 1])
-                w = w.reshape([group, -1, w.shape[1], w.shape[2], w.shape[3]]) * scale
-                w = w.reshape([w.shape[0] * w.shape[1], w.shape[2], w.shape[3], w.shape[4]])
+                scale = scale.reshape([group, 1, -1] + [1] * (w.ndim - 2))
+                w = w.reshape([group, -1] + list(w.shape[1:])) * scale
+                w = w.reshape([w.shape[0] * w.shape[1]] + list(w.shape[2:]))
                 b = alpha * (b - mean) / torch.sqrt(var + epsilon) + beta
             else:
                 raise TypeError(

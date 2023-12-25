@@ -5,7 +5,7 @@ from ppq.core import (DataType, NetworkFramework, QuantizationProperty,
                       QuantizationStates)
 from ppq.IR import BaseGraph, GraphExporter, QuantableOperation
 
-from .caffe_exporter import CaffeExporter
+# from .caffe_exporter import CaffeExporter
 from .onnx_exporter import OnnxExporter
 from .util import convert_value
 

@@ -188,7 +188,7 @@ def setDynamicRange(network, json_file: str):
         quant_param_json = json.load(file)
     act_quant = quant_param_json["act_quant_info"]
 
-    for i in range(network.num_inputs):
+    for i in range(network.num_inputs):                                 # 设置所有输入tensor的dynamic_range
         input_tensor = network.get_input(i)
         if act_quant.__contains__(input_tensor.name):
             value = act_quant[input_tensor.name]
@@ -196,7 +196,7 @@ def setDynamicRange(network, json_file: str):
             tensor_min = -abs(value)
             input_tensor.dynamic_range = (tensor_min, tensor_max)
 
-    for i in range(network.num_layers):
+    for i in range(network.num_layers):                                 # 量化每层layer的输出tensor
         layer = network.get_layer(i)
 
         for output_index in range(layer.num_outputs):
@@ -216,7 +216,7 @@ def build_engine(
     explicit_batch: bool = True, 
     workspace: int = 4294967296, # 4GB
     ):
-    TRT_LOGGER = trt.Logger()
+    TRT_LOGGER = trt.Logger()  # 参见https://docs.nvidia.com/deeplearning/tensorrt/pdf/TensorRT-Developer-Guide.pdf Chapter4 创建一个logger，里面有 log等级
     """
     Build a TensorRT Engine with given onnx model.
 
@@ -232,15 +232,15 @@ def build_engine(
             raise ValueError('Build Quantized TensorRT Engine Requires a JSON file which specifies variable scales, '
                              'however int8_scale_file is None now.')
 
-    builder = trt.Builder(TRT_LOGGER)
+    builder = trt.Builder(TRT_LOGGER)                   # create a builder
     if explicit_batch:
-        network = builder.create_network(1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+        network = builder.create_network(1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))      # create a network definition  The EXPLICIT_BATCH flag is required in order to import models using the ONNX parser 
     else: network = builder.create_network()
     
-    config = builder.create_builder_config()
+    config = builder.create_builder_config()            # build configuration specifying how TensorRT should optimize the model
 
-    parser = trt.OnnxParser(network, TRT_LOGGER)
-    config.max_workspace_size = workspace
+    parser = trt.OnnxParser(network, TRT_LOGGER)        # 使用OnnxParser就不用根据weights构建网络
+    config.max_workspace_size = workspace               # this parameter limits the maximum size that any layer in the network can use
 
     if not os.path.exists(onnx_file):
         raise FileNotFoundError(f'ONNX file {onnx_file} not found')

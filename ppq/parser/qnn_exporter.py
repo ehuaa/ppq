@@ -8,7 +8,7 @@ from ppq.IR import BaseGraph, GraphExporter
 from ppq.IR.quantize import QuantableOperation
 
 from .onnx_exporter import OnnxExporter
-from .caffe_exporter import CaffeExporter
+# from .caffe_exporter import CaffeExporter
 from .util import convert_value
 
 

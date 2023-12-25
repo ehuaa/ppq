@@ -16,6 +16,6 @@ class PPQ_GLOBAL_CONFIGURATION:
         self.EXPORT_PPQ_INTERNAL_INFO = False
         
         # 开启 PPQ 调试模式，将打印所有量化点插入信息
-        self.PPQ_DEBUG                = False
+        self.PPQ_DEBUG                = False               # 通过更改这个地方打开PPQ的调试模式
 
 PPQ_CONFIG = PPQ_GLOBAL_CONFIGURATION()  

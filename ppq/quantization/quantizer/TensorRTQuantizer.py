@@ -25,7 +25,7 @@ class TensorRTQuantizer(BaseQuantizer):
             op=operation, num_of_bits=self._num_of_bits, exponent_bits=0,
             quant_max=self._quant_max, quant_min=self._quant_min,
             observer_algorithm='percentile'
-        )
+        )               # 初始化最初的量化state
 
         if operation.type in {'Conv', 'ConvTranspose', 'Gemm', 'MatMul', 'PPQBiasFusedMatMul'}:
             # base_quant_config.output_quantization_config[0].state = QuantizationStates.FP32
@@ -35,7 +35,7 @@ class TensorRTQuantizer(BaseQuantizer):
             # first parameter must exits, for conv layer it will be conv_weight
             # layout: [out_channel, in_channel, kernel_size, kernel_size]
             if operation.type in {'Conv', 'ConvTranspose'}:
-                if operation.inputs[1].is_parameter:
+                if operation.inputs[1].is_parameter:            # 对于conv类算子，0为输入，1是weights，2是bias，这里1特指weights
                     conv_weight_config = OQC.input_quantization_config[1]
                     conv_weight_config.policy = QuantizationPolicy(
                         QuantizationProperty.SYMMETRICAL +
@@ -43,7 +43,7 @@ class TensorRTQuantizer(BaseQuantizer):
                         QuantizationProperty.PER_CHANNEL
                     )
                     conv_weight_config.channel_axis = (1 if operation.type == 'ConvTranspose' else 0)
-                    conv_weight_config.observer_algorithm = 'minmax'
+                    conv_weight_config.observer_algorithm = 'minmax'        # 校准算法变为minmax对于weights
 
             # first parameter must exits, for gemm layer it will be gemm_weight
             # layout: [in_dim, out_dim]
@@ -58,17 +58,17 @@ class TensorRTQuantizer(BaseQuantizer):
                     gemm_weight_config.channel_axis = 0
                     gemm_weight_config.observer_algorithm = 'minmax'
 
-            if operation.num_of_input > 2:
+            if operation.num_of_input > 2:      # 对conv等算子的bias不进行量化
                 bias_config = OQC.input_quantization_config[-1]
                 bias_config.state = QuantizationStates.FP32
 
         if operation.type == 'LayerNormalization':
             # Layernorm - gamma and beta need to be FP32
-            for TQC in OQC.input_quantization_config[1: ]:
+            for TQC in OQC.input_quantization_config[1: ]:    # 对于LayerNormalization gamma和beta不进行量化
                 TQC.state = QuantizationStates.FP32
 
         if operation.type == 'Attention':
-            # Attention - Only input and weight need to be quantized.
+            # Attention - Only input and weight need to be quantized.       # attention只有input和weight进行量化
             for TQC in OQC.input_quantization_config[2: ]:
                 TQC.state = QuantizationStates.FP32
 
